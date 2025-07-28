@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <form action="/ask/">
+        <input type="text">
+        <label for="text-input"> Digite aqui a sua pergunta</label>
+        <input type="submit">
+    </form>
+    {{ text_area }}
+    {% if could_not_find %}
+        <h2>Desculpe, não achamos fontes para isso...</h2>
+    {% endif %}
+    
+</body>
+</html>
