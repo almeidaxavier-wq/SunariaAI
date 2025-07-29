@@ -1,15 +1,53 @@
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
 from flask import Flask, render_template, url_for, request, flash
 from html_parser import parse_html_and_send
 from pipeline import Pipeline
-import rispy, os, json, markdown
 
-load_dotenv()
+import rispy, os, json  #/---/
+import pandas as pd     # FOR DATA HANDLING
+
+import markdown # FOR OUTPUT IN HTML
+
+import re, string # FOR TEXT PRE-PROCESSING
+
+
 app = Flask(__name__)
 
-chatter_model_name = "facebook/nllb-200-distilled-600M"
+chatter_model_name = "gpt-2"
 kw_model_name = "dslim/bert-base-NER"
 translate_model_name = "Helsinky-NLP/opus-mt-"
+
+tokenizer = AutoTokenizer.from_pretrained(chatter_model_name)
+dataset = None
+training_args = None
+trainer = None
+
+if os.path.exists(os.path.join("data", "raw.json")):
+    json_dataset = pd.read_json(os.path.join("data", 'raw.json'))    
+    dataset = None
+
+    #Still more things to do!!
+    
+    training_args = TrainingArguments(
+        output_dir="./results",
+        logging_dir="./log",
+        logging_steps=10,
+        report_to="tensorboard",
+        evaluation_strategy="epochs",
+        learning_rate= 2e-5,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        num_train_epochs=3,
+        weight_decay=0.01
+
+    )
+
+    trainer = Trainer(
+        model = chatter_model_name,
+        args = training_args,
+        train_dataset = None
+        # MORE TO BE ADDED
+    )
 
 kw_model = pipeline("token-classification", model=kw_model_name, device=0, aggregation_strategy="simple")
 chatter = pipeline("text-generation", model=chatter_model_name, device=0)
@@ -71,13 +109,12 @@ def data_application():
 
                 total_articles, search_keys = retrieve_results(results, tot_data)
 
-
             except:
                 print("Could not find any matching description")
                 return render_template("search.html", could_not_find=True)
 
         else:
-            # TO ADD MORE CONFIGURATIONS
-            pass
+
+            return render_template("search.html", could_not_find=False, res=ai_res)
 
     return render_template('search.html', could_not_find=False)

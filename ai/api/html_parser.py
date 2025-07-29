@@ -45,10 +45,11 @@ def parse_html_and_send(*keys):
         "output":'site',
         "from": "0",
         "sort": '',
+        "filter[open_acess]" : "true",
         "format": 'summary'
     }
 
-    init_driver()
+    driver = init_driver()
     url_search = urlencode(params)
 
     wait = WebDriverWait(driver, timeout=30)
@@ -95,27 +96,18 @@ def parse_html_and_send(*keys):
         time.sleep(10)
         json.dump(anterior_json, json_to_write)
 
-def parse_article(driver, url):
-    
-    pdf_dir = "pdfs"
+def parse_article(url):
+    driver = init_driver()
+    wait = WebDriverWait(driver, timeout=30)    
     driver.get(url)
 
-    wait = WebDriverWait(driver, timeout=30)
-    elem_pdf = driver.find_element(By.XPATH, "/html/body/div[4]/div/div/div/a[2]")
+    article = driver.find_element(By.XPATH, '//*[@id="standalonearticle"]/section/div/div') 
+    wait.until(lambda _ : article.is_displayed())
+    txt = article.text   
     
-    wait.until(lambda _ : elem.is_displayed())
-    elem_pdf.click()
-
-    port_link = driver.find_element(By.XPATH, "/html/body/div[5]/div/div/div[2]/div/div/ul/li[1]/a")
-    driver.get(port_link.href)
-
+    driver.quit()
+    return txt
     
-    # Abrindo o arquivo PDF
-    with open('.pdf', 'rb') as arquivo:
-        leitor_pdf = PyPDF2.PdfReader(arquivo)
-        # Lendo o texto da primeira página
-        texto = leitor_pdf.pages[0].extract_text()
-        print(texto)
 
 def wait_for_download_complete(directory, timeout=100, check_interval=1):
     """Aguarda até que o arquivo mais recente termine de baixar"""
