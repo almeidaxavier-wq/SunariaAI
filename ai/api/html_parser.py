@@ -8,9 +8,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from datetime import datetime
 from urllib.parse import urlencode
-from rich.pretty import pprint
 import os, time, rispy, json
-import PyPDF2
 
 
 
@@ -92,7 +90,6 @@ def parse_html_and_send(*keys):
         for key in keys:
             anterior_json[key].extend(data)
 
-        pprint(anterior_json)
         time.sleep(10)
         json.dump(anterior_json, json_to_write)
 
@@ -126,4 +123,4 @@ def wait_for_download_complete(directory, timeout=100, check_interval=1):
 
 
 if __name__ == '__main__':
-    parse_html_and_send('Inteligência Artificial', 'Medicina', 'Cromossomos')
+    parse_html_and_send('Inteligência Artificial', 'Medicina')
