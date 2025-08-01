@@ -1,8 +1,7 @@
 from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
 from datasets import Dataset
-from flask import Flask, render_template, url_for, request, flash
+from flask import Flask, render_template, url_for, request, flash, redirect
 from html_parser import parse_html_and_send
-from pipeline import Pipeline
 
 import os, json, secrets #/---/
 import pandas as pd     # FOR DATA HANDLING
@@ -25,6 +24,7 @@ def train():
 
         dataset_train =  Dataset.from_pandas(train)
         dataset_eval = Dataset.from_pandas(eval)
+        tokenizer = AutoTokenizer.from_pretrained(chatter_model_name)
         
         training_args = TrainingArguments(
             output_dir="./results",
@@ -49,7 +49,7 @@ def train():
             # MORE TO BE ADDED
         )
 
-        return trainer
+        return trainer, tokenizer
 
     else:
         os.mkdir("data")
@@ -60,13 +60,13 @@ kw_model = pipeline("token-classification", model=kw_model_name, device=0, aggre
 chatter = pipeline("text-generation", model=chatter_model_name, device=0)
 translation_en_pt = pipeline("translation", model=translate_model_name, device=0)
 
-kw_pipeline = Pipeline((translation_en_pt, 'translation'), (kw_model, 'token-classification'))
-
 # Here we can establish connection between the AI and the data
 
-def retrieve_results(data, kwds, tot_data):
+def retrieve_results(data, tot_data):
+    kwds = []
     for result in data:
-        word = result[0]['word']
+        print(result)
+        word = result
         if word.starswith("##"):
             current_keyword += word[2:]
         
@@ -91,23 +91,30 @@ def retrieve_results(data, kwds, tot_data):
 
     return total_articles, search_keys
 
-@app.route("/ask/", methods=['GET'])
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    return 'Hello world!'
+
+@app.route("/ask", methods=['GET'])
 def data_application():
     return render_template('search.html', could_not_find=False)
 
-@app.route("/ask/process/", methods=["POST"])
+@app.route("/ask/process", methods=["POST", 'GET'])
 def data_application_processing():
-    trainer = train()
     if request.method == 'POST':
-        query = request.form['text-input']
+        trainer, tokenizer = train()
+        query = request.form.get('text-input')
         tot_data = {}
 
         with open(os.path.join('data', 'raw.json'), 'r') as file:
             tot_data = json.load(file)
 
         flash("Wait a minute while we search for your query")
-        results = kw_pipeline.run(query)
+        print(query)
+        results = kw_model(query)
+        print('RESULTS', results)
         total_articles, search_keys = retrieve_results(results, tot_data)
+        print('ARTICLES', total_articles)
 
         if search_keys:
             try:
@@ -118,15 +125,15 @@ def data_application_processing():
                 total_articles, search_keys = retrieve_results(results, tot_data)      
                 trainer.train()
                 ai_response = chatter.generate(query, max_new_tokens=300, num_beams=4, num_return_sequences=1)
-                return render_template("search.html", could_not_find=False, res=ai_response)
+                return render_template("search.html", text_area=ai_response, could_not_find=False)
 
             except:
                 print("Could not find any matching description")
-                return render_template("search.html", could_not_find=True)
+                return render_template("search.html", text_area='', could_not_find=True)
 
         else:
             ai_response = chatter.generate(query, max_new_tokens=300, num_beams=4, num_return_sequences=1)
-            return render_template("search.html", could_not_find=False, res=ai_response)
+            return render_template("search.html", text_area=ai_response, could_not_find=False)
 
 if __name__ == '__main__':
     app.run(debug=True)

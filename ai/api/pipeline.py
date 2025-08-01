@@ -26,7 +26,7 @@ class Pipeline:
                     break
 
                 case "token-classification":
-                    query = list(map(lambda x: x['word'], model(query)))
+                    query = model(query)
                     break
 
         return query            
