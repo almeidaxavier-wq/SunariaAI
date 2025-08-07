@@ -1,5 +1,5 @@
-from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-from datasets import Dataset
+from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer, AutoModelForSeq2SeqLM
+from datasets import Dataset, load_dataset
 from flask import Flask, render_template, url_for, request, flash, redirect
 from html_parser import parse_html_and_send
 
@@ -11,10 +11,14 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(32)
 
 chatter_model_name = "openai-community/gpt2"
-kw_model_name = "sagui-nlp/debertinha-ptbr-xsmall-lenerbr"
+kw_model_name = "dslim/bert-base-NER"
 translate_model_name = "unicamp-dl/translation-en-pt-t5"
 
+tokenizer_translator = AutoTokenizer.from_pretrained(translate_model_name)
+model = AutoModelForSeq2SeqLM.from_pretrained(translate_model_name)
+
 tokenizer = AutoTokenizer.from_pretrained(chatter_model_name)
+chatter = AutoModelForCausalLM.from_pretrained(chatter_model_name)
 
 def train():
     if os.path.exists(os.path.join("data", "raw.json")):
@@ -24,7 +28,6 @@ def train():
 
         dataset_train =  Dataset.from_pandas(train)
         dataset_eval = Dataset.from_pandas(eval)
-        tokenizer = AutoTokenizer.from_pretrained(chatter_model_name)
         
         training_args = TrainingArguments(
             output_dir="./results",
@@ -40,7 +43,7 @@ def train():
 
         )
 
-        trainer = Trainer(
+        trainer_chatter = Trainer(
             model = AutoModelForCausalLM.from_pretrained(chatter_model_name),
             args = training_args,
             train_dataset = dataset_train,
@@ -49,25 +52,26 @@ def train():
             # MORE TO BE ADDED
         )
 
-        return trainer, tokenizer
+
+        return trainer_chatter 
 
     else:
         os.mkdir("data")
         with open("data/raw.json", 'w') as file:
             json.dump({}, file)
 
-kw_model = pipeline("token-classification", model=kw_model_name, device=0, aggregation_strategy="simple")
-chatter = pipeline("text-generation", model=chatter_model_name, device=0)
-translation_en_pt = pipeline("translation", model=translate_model_name, device=0)
+kw_model = pipeline("ner", model=kw_model_name)
+translation_en_pt = pipeline("text2text-generation", model=model, tokenizer=tokenizer_translator, device=0)
 
 # Here we can establish connection between the AI and the data
 
 def retrieve_results(data, tot_data):
     kwds = []
+    current_keyword = ""
     for result in data:
         print(result)
-        word = result
-        if word.starswith("##"):
+        word = result['word']
+        if word.startswith("##"):
             current_keyword += word[2:]
         
         else:
@@ -102,8 +106,9 @@ def data_application():
 @app.route("/ask/process", methods=["POST", 'GET'])
 def data_application_processing():
     if request.method == 'POST':
-        trainer, tokenizer = train()
-        query = request.form.get('text-input')
+        trainer = train()
+        query = translation_en_pt(f"translate Portuguese to English: {request.form.get('text-input')}")
+        print(query)
         tot_data = {}
 
         with open(os.path.join('data', 'raw.json'), 'r') as file:
