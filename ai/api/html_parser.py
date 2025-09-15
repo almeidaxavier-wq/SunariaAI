@@ -44,11 +44,11 @@ def parse_html_and_send(*keys):
         "from": "0",
         "sort": '',
         "filter[open_acess]" : "true",
-        "format": 'summary'
     }
 
     driver = init_driver()
     url_search = urlencode(params)
+    print(base_url, url_search)
 
     wait = WebDriverWait(driver, timeout=30)
     driver.get(base_url + '?' + url_search)

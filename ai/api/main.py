@@ -12,12 +12,14 @@ app.config['SECRET_KEY'] = secrets.token_hex(32)
 
 chatter_model_name = "openai-community/gpt2"
 kw_model_name = "dslim/bert-base-NER"
-translate_model_name = "unicamp-dl/translation-en-pt-t5"
+translate_model_name = "unicamp-dl/translation-pt-en-t5"
 
 tokenizer_translator = AutoTokenizer.from_pretrained(translate_model_name)
 model = AutoModelForSeq2SeqLM.from_pretrained(translate_model_name)
 
 tokenizer = AutoTokenizer.from_pretrained(chatter_model_name)
+tokenizer.pad_token = tokenizer.eos_token  # Faltando esta linha
+
 chatter = AutoModelForCausalLM.from_pretrained(chatter_model_name)
 
 def train():
@@ -60,40 +62,48 @@ def train():
         with open("data/raw.json", 'w') as file:
             json.dump({}, file)
 
-kw_model = pipeline("ner", model=kw_model_name)
-translation_en_pt = pipeline("text2text-generation", model=model, tokenizer=tokenizer_translator, device=0)
+tokenizer_kw = AutoTokenizer.from_pretrained(kw_model_name)
+kw_model = pipeline("ner", model=kw_model_name, tokenizer=tokenizer_kw)
+translation_pt_en = pipeline("text2text-generation", model=model, tokenizer=tokenizer_translator, device=0)
 
 # Here we can establish connection between the AI and the data
 
-def retrieve_results(data, tot_data):
-    kwds = []
-    current_keyword = ""
-    for result in data:
-        print(result)
-        word = result['word']
-        if word.startswith("##"):
-            current_keyword += word[2:]
+def retrieve_results(ner_results, tot_data):
+    """Corrigida a lógica de concatenação de subwords"""
+    keywords = []
+    current_entity = ""
+    
+    for entity in ner_results:
+        word = entity['word']
         
+        if word.startswith("##"):
+            # É uma subword - concatena com a anterior
+            current_entity += word[2:]
         else:
-            if current_keyword:
-                current_keyword = word
-
-        if current_keyword:
-            kwds.append(current_keyword)
-
+            # Nova palavra - salva a anterior e inicia nova
+            if current_entity:
+                keywords.append(current_entity)
+            current_entity = word
+    
+    # Adiciona a última entidade
+    if current_entity:
+        keywords.append(current_entity)
+    
+    # Remove duplicatas
+    keywords = list(set(keywords))
+    print(keywords)
+    
+    # Busca nos dados
     total_articles = []
     search_keys = False
-
-    for kw in kwds:
-        if kw not in tot_data.keys():
+    
+    for kw in keywords:
+        if kw in tot_data:
+            total_articles.extend(tot_data[kw])
+        else:
             search_keys = True
-            break
-
-        total_articles.extend([item if item not in total_articles else [] for item in tot_data[kw]])
-        while [] in total_articles:
-            total_articles.remove([])
-
-    return total_articles, search_keys
+    
+    return total_articles, search_keys, keywords
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -107,7 +117,7 @@ def data_application():
 def data_application_processing():
     if request.method == 'POST':
         trainer = train()
-        query = translation_en_pt(f"translate Portuguese to English: {request.form.get('text-input')}")
+        query = translation_pt_en(request.form.get('text-input'))[0]['generated_text']
         print(query)
         tot_data = {}
 
@@ -115,15 +125,18 @@ def data_application_processing():
             tot_data = json.load(file)
 
         flash("Wait a minute while we search for your query")
-        print(query)
+        print(type(query))
         results = kw_model(query)
         print('RESULTS', results)
-        total_articles, search_keys = retrieve_results(results, tot_data)
+        total_articles, search_keys, kwds = retrieve_results(results, tot_data)
+        print(search_keys)
         print('ARTICLES', total_articles)
 
         if search_keys:
             try:
-                parse_html_and_send(*results)
+                print("!")
+                parse_html_and_send(*kwds)
+                print(':D')
                 with open(os.path.join('data', 'raw.json'), 'r') as file:
                     tot_data = json.load(file)
 
@@ -132,11 +145,13 @@ def data_application_processing():
                 ai_response = chatter.generate(query, max_new_tokens=300, num_beams=4, num_return_sequences=1)
                 return render_template("search.html", text_area=ai_response, could_not_find=False)
 
-            except:
+            except Exception as err:
+                print(err)
                 print("Could not find any matching description")
                 return render_template("search.html", text_area='', could_not_find=True)
 
         else:
+            query = tokenizer
             ai_response = chatter.generate(query, max_new_tokens=300, num_beams=4, num_return_sequences=1)
             return render_template("search.html", text_area=ai_response, could_not_find=False)
 
